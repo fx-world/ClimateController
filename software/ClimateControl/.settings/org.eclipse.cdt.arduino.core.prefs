@@ -1,0 +1,2 @@
+eclipse.preferences.version=1
+libraries=["SD",{"package"\:"arduino","platform"\:"avr","library"\:"EEPROM"},"RTClib",{"package"\:"arduino","platform"\:"avr","library"\:"Wire"},{"package"\:"arduino","platform"\:"avr","library"\:"SPI"},"DHT sensor library","Adafruit Unified Sensor"]
