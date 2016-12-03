@@ -4,14 +4,13 @@
 #include "RTClib.h"
 #include <Adafruit_Sensor.h>
 #include <DHT.h>
-#include <DHT_U.h>
 
 const int sdCardChipSelect = 10;
 
 RTC_DS3231 rtc;
 
-DHT_Unified dht_inside  (2, DHT22);
-DHT_Unified dht_outside (3, DHT22);
+DHT dht_inside  (2, DHT22);
+DHT dht_outside (3, DHT22);
 
 void showDate(const DateTime& date) {
 	Serial.print(date.year(), DEC);
@@ -26,6 +25,14 @@ void showDate(const DateTime& date) {
 	Serial.print(':');
 	Serial.print(date.second(), DEC);
 	Serial.println();
+}
+
+bool isVentialationNeeded(float humidityInside, float humidityOutside) {
+	return (humidityInside > humidityOutside);
+}
+
+void setVentilation(bool enabled) {
+	// TODO add code
 }
 
 void setup() {
@@ -50,26 +57,18 @@ void setup() {
 }
 
 void loop() {
-	DateTime now = rtc.now();
+	float    humidityInside  = dht_inside.readHumidity();
+	float    humidityOutside = dht_outside.readHumidity();
+	DateTime now             = rtc.now();
+
 	showDate(now);
 
-	sensors_event_t event;
-	dht_inside.temperature().getEvent(&event);
-	if (isnan(event.temperature)) {
-		Serial.println("Error reading temperature!");
+	// TODO add delay for activation and deactivation, so it doesn't always turns off and on
+	if (isVentialationNeeded(humidityInside, humidityOutside)) {
+		setVentilation(true);
 	} else {
-		Serial.print("Temperature: ");
-		Serial.print(event.temperature);
-		Serial.println(" *C");
+		setVentilation(false);
 	}
 
-	// Get humidity event and print its value.
-	dht_inside.humidity().getEvent(&event);
-	if (isnan(event.relative_humidity)) {
-		Serial.println("Error reading humidity!");
-	} else {
-		Serial.print("Humidity: ");
-		Serial.print(event.relative_humidity);
-		Serial.println("%");
-	}
+	delay(10000);
 }
