@@ -7,10 +7,22 @@
 
 const int sdCardChipSelect = 10;
 
+#define SENSOR_READ_RETRIES 3
+#define SENSOR_READ_RETRY_DELAY_MILLIS 10000
+
 RTC_DS3231 rtc;
 
 DHT dht_inside  (2, DHT22);
 DHT dht_outside (3, DHT22);
+
+struct SensorData {
+	float humidity;
+	float temperature;
+};
+
+SensorData insideData;
+SensorData outsideData;
+
 
 void showDate(const DateTime& date) {
 	Serial.print(date.year(), DEC);
@@ -27,7 +39,7 @@ void showDate(const DateTime& date) {
 	Serial.println();
 }
 
-bool isVentilationNeeded(float humidityInside, float humidityOutside) {
+bool isVentilationNeeded(DateTime now, float humidityInside, float humidityOutside) {
 	return (humidityInside > humidityOutside);
 }
 
@@ -61,20 +73,52 @@ void setup() {
  *
  * see: https://carnotcycle.wordpress.com/2012/08/04/how-to-convert-relative-humidity-to-absolute-humidity/
  */
-float asAbsolute(float relativeHumidity, float temperature) {
-	return (6.112 * pow(EULER, ((17.67 * temperature)/(243.5 + temperature))) * relativeHumidity * 2.1674) / (273.15 + temperature);
+float asAbsolute(SensorData data) {
+	return (6.112 * pow(EULER, ((17.67 * data.temperature)/(243.5 + data.temperature))) * data.humidity * 2.1674) / (273.15 + data.temperature);
 }
+
+bool isReadError() {
+	return isnan(insideData.humidity)
+		|| isnan(insideData.temperature)
+		|| isnan(outsideData.humidity)
+		|| isnan(outsideData.temperature);
+}
+
+/**
+ * read sensor data.
+ * pause and retry if sensor data was NaN.
+ */
+void readSensors() {
+	int retry = SENSOR_READ_RETRIES;
+	for (; retry > 0; retry--) {
+		insideData.humidity = dht_inside.readHumidity();
+		insideData.temperature = dht_inside.readTemperature();
+		outsideData.humidity = dht_outside.readHumidity();
+		outsideData.temperature = dht_inside.readTemperature();
+		if (isReadError()) {
+			delay(SENSOR_READ_RETRY_DELAY_MILLIS);
+		} else {
+			break;
+		}
+	}
+}
+
 
 void loop() {
 	// read sensor data
 	DateTime now                = rtc.now();
 
-	float    humidityInside     = dht_inside.readHumidity();
-	float	 temperatureInside  = dht_inside.readTemperature();
-	float    humidityOutside    = dht_outside.readHumidity();
-	float	 temperatureOutside = dht_inside.readTemperature();
+	readSensors();
 
-	bool     ventilationNeeded  = isVentilationNeeded(asAbsolute(humidityInside, temperatureInside), asAbsolute(humidityOutside, temperatureOutside));
+	bool ventilationNeeded = false;
+
+	if (isReadError()) {
+		//TODO: if sensor reading fails, it may have been disconnected.
+		//TODO: do periodic ventilation?
+	} else {
+		// skip asAbsolute computation if sensor data is not available (i.e. NaN)
+		ventilationNeeded = isVentilationNeeded(now, asAbsolute(insideData), asAbsolute(outsideData));
+	}
 
 	// trigger ventilation and log to serial
 	setVentilation(ventilationNeeded);
@@ -82,7 +126,7 @@ void loop() {
 	// timestamp;humid-out;temp-out;humid-in;temp-in;vent-set
 	char* logline = (char*) malloc(128 * sizeof(char));
 	sprintf(logline, "%d-%d-%dT%d:%d:%d;%d;%d;%d;%d;%d", now.year(), now.month(), now.day(), now.hour(), now.minute(), now.second(),
-			humidityInside, temperatureInside, humidityOutside, temperatureOutside, ventilationNeeded);
+			insideData.humidity, insideData.temperature, outsideData.humidity, outsideData.temperature, ventilationNeeded);
 
 	// append logline to logfile for current date
 	char* filename = (char*) malloc(14 * sizeof(char));
