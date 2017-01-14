@@ -77,23 +77,25 @@ float asAbsolute(SensorData data) {
 	return (6.112 * pow(EULER, ((17.67 * data.temperature)/(243.5 + data.temperature))) * data.humidity * 2.1674) / (273.15 + data.temperature);
 }
 
+bool isReadError() {
+	return isnan(insideData.humidity)
+		|| isnan(insideData.temperature)
+		|| isnan(outsideData.humidity)
+		|| isnan(outsideData.temperature);
+}
+
 /**
  * read sensor data.
  * pause and retry if sensor data was NaN.
  */
 void readSensors() {
-	bool readError = false;
 	int retry = SENSOR_READ_RETRIES;
 	for (; retry > 0; retry--) {
 		insideData.humidity = dht_inside.readHumidity();
 		insideData.temperature = dht_inside.readTemperature();
 		outsideData.humidity = dht_outside.readHumidity();
 		outsideData.temperature = dht_inside.readTemperature();
-		readError = isnan(insideData.humidity)
-				 || isnan(insideData.temperature)
-		 		 || isnan(outsideData.humidity)
-		    	 || isnan(outsideData.temperature);
-		if (readError) {
+		if (isReadError()) {
 			delay(SENSOR_READ_RETRY_DELAY_MILLIS);
 		} else {
 			break;
@@ -101,13 +103,22 @@ void readSensors() {
 	}
 }
 
+
 void loop() {
 	// read sensor data
 	DateTime now                = rtc.now();
 
 	readSensors();
 
-	bool ventilationNeeded  = isVentilationNeeded(now, asAbsolute(insideData), asAbsolute(outsideData));
+	bool ventilationNeeded = false;
+
+	if (isReadError()) {
+		//TODO: if sensor reading fails, it may have been disconnected.
+		//TODO: do periodic ventilation?
+	} else {
+		// skip asAbsolute computation if sensor data is not available (i.e. NaN)
+		ventilationNeeded = isVentilationNeeded(now, asAbsolute(insideData), asAbsolute(outsideData));
+	}
 
 	// trigger ventilation and log to serial
 	setVentilation(ventilationNeeded);
